@@ -1,12 +1,21 @@
 const express = require("express");
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
-const cors = require("cors")
+const cors = require("cors");
+const cookieParse = require("cookie-parser")
 const app = express();
 const jwt = require("jsonwebtoken")
 require("dotenv").config();
 const port = process.env.PORT || 5000;
 // middleware
-app.use(cors())
+
+app.use(cors({
+    credentials: true,
+    origin: ['http://localhost:5173']
+    // preflightContinue: false,
+    // optionsSuccessStatus: 204,
+})
+);
+app.use(cookieParse());
 app.use(express.json())
 
 
@@ -24,13 +33,16 @@ async function run() {
     try {
         // Connect the client to the server	(optional starting in v4.7)
         await client.connect();
-
         // auth and authentication related apis
-        app.post("/jwt", async (req, res) => {
+        app.post("/jwt", (req, res) => {
             const user = req.body;
-            const tocken = jwt.sign({ user }, "secret", { expiresIn: "1h" })
-            res.send(tocken)
-            console.log(tocken)
+            // console.log(process.env.ACCESS_TOKEN)
+            const token = jwt.sign({ user }, process.env.ACCESS_TOKEN, { expiresIn: "1h" })
+            res.cookie("token", token, {
+                httpOnly: true,
+                secure: false,
+                sameSite: "strict"
+            }).send({ success: true })
         })
 
         // get all data from database
@@ -41,7 +53,6 @@ async function run() {
             const result = await cursor.toArray();
             res.send(result)
         })
-
         // get one data for checkout page
         app.get("/checkout/:id", async (req, res) => {
             const id = req.params.id;
@@ -61,6 +72,7 @@ async function run() {
             }
             const result = await bookingsCollections.find(query).toArray();
             res.send(result)
+            // console.log(req.cookies.token) //token is getting form clent side
         })
         // post method for bookings
         app.post("/bookings", async (req, res) => {
