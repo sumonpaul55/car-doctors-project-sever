@@ -10,7 +10,7 @@ const port = process.env.PORT || 5000;
 
 app.use(cors({
     credentials: true,
-    origin: ['http://localhost:5173']
+    origin: 'http://localhost:5173',
     // preflightContinue: false,
     // optionsSuccessStatus: 204,
 })
@@ -29,6 +29,26 @@ const client = new MongoClient(uri, {
         deprecationErrors: true,
     }
 });
+
+// const logger = (req, res, next) => {
+//     console.log("Calling", req.host, req.originalUrl);
+//     next();
+// }
+// verify token functions 
+const verifyToken = async (req, res, next) => {
+    const token = req.cookies?.token;
+    if (!token) {
+        return res.status(401).send({ message: "Un Authorized Access" })
+    }
+    jwt.verify(token, process.env.ACCESS_TOKEN, (err, decoded) => {
+        if (err) {
+            return res.status(401).send({ message: "unauthrized Access" })
+        }
+        res.user = decoded;
+        next();
+    })
+}
+
 async function run() {
     try {
         // Connect the client to the server	(optional starting in v4.7)
@@ -37,7 +57,7 @@ async function run() {
         app.post("/jwt", (req, res) => {
             const user = req.body;
             // console.log(process.env.ACCESS_TOKEN)
-            const token = jwt.sign({ user }, process.env.ACCESS_TOKEN, { expiresIn: "1h" })
+            const token = jwt.sign(user, process.env.ACCESS_TOKEN, { expiresIn: "1h" })
             res.cookie("token", token, {
                 httpOnly: true,
                 secure: false,
@@ -48,6 +68,8 @@ async function run() {
         // get all data from database
         const serviceCollection = client.db("cars-doctors").collection("services");
         const bookingsCollections = client.db("cars-doctors").collection("bookings");
+
+
         app.get("/services", async (req, res) => {
             const cursor = serviceCollection.find();
             const result = await cursor.toArray();
@@ -55,6 +77,7 @@ async function run() {
         })
         // get one data for checkout page
         app.get("/checkout/:id", async (req, res) => {
+            console.log("from checkout", req.user)
             const id = req.params.id;
             const query = { _id: new ObjectId(id) }
             const options = {
@@ -64,11 +87,15 @@ async function run() {
             res.send(result)
         })
         // getting data for booked page
-        app.get("/bookings", async (req, res) => {
-            // console.log(req.query)
+        app.get("/bookings", verifyToken, async (req, res) => {
+            // console.log(req.query.email)
+            // console.log(res.user.email)
+            if (res.user.email !== req.query.email) {
+                return res.status(403).send({ message: "forbidden access" })
+            }
             let query = {};
             if (req.query?.email) {
-                query = { email: req.query.email }
+                query = { email: req.query?.email }
             }
             const result = await bookingsCollections.find(query).toArray();
             res.send(result)
